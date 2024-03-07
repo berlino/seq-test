@@ -3,13 +3,22 @@ import numpy as np
 from typing import List, Optional, Tuple
 from pythomata import SimpleDFA
 
-from .utils import SyntheticData
+from ..config import DataSegmentConfig
+from .utils import DataSegment
 
 import numpy as np
 
-def dataset2tensor(dataset, seq_len, vocab):
-    char2id = {c: i for i, c in enumerate(vocab)}
+class RegBenchConfig(DataSegmentConfig):
+    name: str="regbench"
+
+    def build(self, seed: int) -> DataSegment:
+        return regbench(**self.model_dump(), seed=seed)
+
+def dataset2tensor(dataset, seq_len, char2id, ret_dfa=False):
+    # input: list of string where each string might contain example separator
+    # output: list of string where each string might contain pad token (example separator is replaced with pad token)
     examples = dataset.data
+
     def tokenize(inp_str, type="input"):
         assert type in ["input", "output"]
         ret = []
@@ -19,7 +28,8 @@ def dataset2tensor(dataset, seq_len, vocab):
             else:
                 assert char == "<unk>" and type == "output"
                 ret.append(-100)
-        # pad to seq_len
+
+        # pad to seq_len, pad_token is 0 for input and -100 for output
         if type == "input":
             pad_token = 0
         else:
@@ -27,39 +37,45 @@ def dataset2tensor(dataset, seq_len, vocab):
         ret += [pad_token] * (seq_len - len(ret))
         return ret
 
-
-
     inputs, labels = [], []
+    dfas = []
     for example in examples:
         inp, out, dfa = example
         inputs.append(tokenize(inp, "input"))
         labels.append(tokenize(out, "output"))
-    return torch.LongTensor(inputs), torch.LongTensor(labels)
+        dfas.append(dfa)
+
+    if ret_dfa:
+        return torch.LongTensor(inputs), torch.LongTensor(labels), dfas
+    else: 
+        return torch.LongTensor(inputs), torch.LongTensor(labels)
 
 
 def regbench(
+        split: str="train",
         vocab_size: int=18, 
         input_seq_len: int=512,
-        num_train_examples: int=5000, 
-        num_test_examples: int=1000,
+        num_examples: int=1000,
         seed: int=42,
+        eval_flag: bool=False,
+        **kwargs,
     ):
-    train_regbench = RegBench("train", num_examples=num_train_examples, vocab_size=vocab_size, seed=seed, max_input_seq_len=input_seq_len)
-    val_regbench = RegBench("test", num_examples=num_test_examples, vocab_size=vocab_size, seed=seed, max_input_seq_len=input_seq_len)
+    """
+    Args:
+        eval_flag: if True, return all the meta information needed for DFA evaluation
+    """
+    regbench = RegBench(split, num_examples=num_examples, vocab_size=vocab_size, seed=seed, max_input_seq_len=input_seq_len)
 
-    # construct vocab which is shared between train and test
-    vocab = train_regbench.vocab
-    vocab += ["|"]
+    vocab = regbench.vocab
+    vocab = ["<unk>"] + vocab + ["|"] # the first token is the pad token, | is the example separator
+    char2id = {c: i for i, c in enumerate(vocab)}
 
-    train_inputs, train_labels = dataset2tensor(train_regbench, input_seq_len, vocab)
-    test_inputs, test_labels = dataset2tensor(val_regbench, input_seq_len, vocab)
-
-    data = SyntheticData(
-        train_inputs, train_labels, test_inputs, test_labels
-    )
-
-    return data
-
+    if eval_flag:
+        inputs, labels, dfas = dataset2tensor(regbench, input_seq_len, char2id, ret_dfa=True)
+        return inputs, vocab, dfas
+    else:
+        inputs, labels = dataset2tensor(regbench, input_seq_len, char2id, ret_dfa=False)
+        return DataSegment(inputs, labels)
 
 class DFA:
     """Represents a DFA"""

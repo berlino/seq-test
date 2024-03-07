@@ -7,6 +7,7 @@ model_vocab_size = 18 + 2 # the additional seperator token
 seq_len = 512
 d_model = 128
 
+
 configs = []
 for num_epoch in [30, 60, 90, 120]:
     config = TrainConfig(
@@ -20,10 +21,16 @@ for num_epoch in [30, 60, 90, 120]:
             n_layers=4,
             block_type="TransformerBlock",
             vocab_size=model_vocab_size,
-            max_position_embeddings=seq_len,
+            max_position_embeddings=-1,
             sequence_mixer=ModuleConfig(
-                name="zoology.mixers.attention.MHA",
-                kwargs={"dropout": 0.1, "num_heads": 2}
+                name="fla.layers.gla.GatedLinearAttention",
+                kwargs={
+                        "mode": "fused_recurrent",
+                        "num_heads": 2,
+                        'use_gk': True,
+                        "use_gv": False,
+                        "gate_logit_normalizer": 16,
+                    }              
             ),
             state_mixer=ModuleConfig(
                 name="zoology.mixers.mlp.SwiGLU", 
@@ -33,11 +40,10 @@ for num_epoch in [30, 60, 90, 120]:
 
         learning_rate=2.54e-4, # from icll paper
         max_epochs=num_epoch,
-        run_id=f"regbench_seq{seq_len}_vocab{vocab_size}_mha_dmodel{d_model}_epoch{num_epoch}",
+        run_id=f"regbench_seq{seq_len}_vocab{vocab_size}_gla_dmodel{d_model}_epoch{num_epoch}",
         logger=LoggerConfig(
             project_name="seq-test",
             entity="bailin"
         )
     )
-
     configs.append(config)

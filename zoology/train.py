@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, Union
 import pandas as pd
 
+import math
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -213,6 +214,53 @@ def train(config: TrainConfig):
         logger=logger,
     )
     task.fit()
+
+    # run post-training evaluation for regbench
+    # TODO: move this to a separate function
+    assert len(config.data.test_configs) == 1
+    if config.data.test_configs[0].name == "regbench":
+        from zoology.data.regbench import regbench
+        eval_input, id2token, eval_dfas = regbench(**config.data.test_configs[0].model_dump(), seed=config.data.seed, eval_flag=True)
+        num_examples, seq_len = eval_input.shape
+        batch_size = config.data.batch_size
+        num_batches = math.ceil(num_examples // batch_size)
+        pad_token = "<unk>"
+        example_separator_token = "|"
+        num_total_tokens, num_correct_tokens = 0, 0
+        for batch_idx in range(num_batches):
+            batch_input = eval_input[batch_idx * batch_size: (batch_idx + 1) * batch_size].to(task.device)
+            batch_dfa = eval_dfas[batch_idx * batch_size: (batch_idx + 1) * batch_size]
+            logits = model(batch_input)
+            batch_preds = torch.argmax(logits, dim=-1)
+
+            for inp, pred, dfa in zip(batch_input, batch_preds, batch_dfa):
+                inp = [id2token[_t] for _t in inp]
+                # print("input str: ", inp)
+                pred = [id2token[_t] for _t in pred]
+                assert len(inp) == len(pred)
+                example_start_index = 0
+                # input: a b c | d e f | <unk> <unk>
+                for tok_idx in range(len(inp) - 1):
+                    cur_token = inp[tok_idx]
+
+                    # skip the pad token
+                    if cur_token == pad_token:
+                        example_start_index = tok_idx + 1
+                        continue
+
+                    # skip the last token of a sample, e.g.,c f
+                    if inp[tok_idx + 1] == example_separator_token:
+                        example_start_index = tok_idx + 2
+                        continue
+
+                    # cur token could be b c or |. In the case of |, model predits the first character of a new sample
+                    dfa_str = inp[example_start_index : tok_idx + 1] + [pred[tok_idx]]
+                    correctness = dfa(dfa_str)
+
+                    num_total_tokens += 1
+                    num_correct_tokens += correctness
+        print(f"DFA Accuracy: {num_correct_tokens / num_total_tokens}")
+
     logger.finish()
 
 
