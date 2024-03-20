@@ -95,6 +95,12 @@ def _init_weights(
                 nn.init.normal_(
                     p, mean=0.0, std=initializer_range / math.sqrt(2 * n_layers)
                 )
+            
+            # If using SwiGLU activation for now, we scale the std by 2
+            elif "down_proj.weight" in name:
+                nn.init.normal_(
+                    p, mean=0.0, std=initializer_range / math.sqrt(2 * n_layers)
+                )
 
 
 class TransformerBlock(nn.Module):

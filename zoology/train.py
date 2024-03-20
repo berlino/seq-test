@@ -31,6 +31,7 @@ class Trainer:
         weight_decay: float = 0.1,
         early_stopping_metric: str = None,
         early_stopping_threshold: float = None,
+        early_stopping_patience: int = 6,
         slice_keys: List[str] = [],
         device: Union[str, int] = "cuda",
         logger: WandbLogger = None,
@@ -44,6 +45,7 @@ class Trainer:
         self.max_epochs = max_epochs
         self.early_stopping_metric = early_stopping_metric
         self.early_stopping_threshold = early_stopping_threshold
+        self.early_stopping_patience = early_stopping_patience
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
         self.slice_keys = slice_keys
@@ -153,11 +155,14 @@ class Trainer:
         self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
             self.optimizer, T_max=self.max_epochs, eta_min=0.0
         )
+
+        best_metric = None
+        early_stopping_counter = 0
         for epoch_idx in range(self.max_epochs):
             self.train_epoch(epoch_idx)
             metrics = self.test(epoch_idx)
 
-            # early stopping
+            # early stopping based on threshold
             if (self.early_stopping_metric is not None) and metrics[
                 self.early_stopping_metric
             ] > self.early_stopping_threshold:
@@ -166,7 +171,20 @@ class Trainer:
                     f"{self.early_stopping_metric} {metrics[self.early_stopping_metric]} > {self.early_stopping_threshold}"
                 )
                 break
-
+            
+            # early stopping based on patience
+            if self.early_stopping_metric is not None:
+                if best_metric is None or metrics[self.early_stopping_metric] > best_metric:
+                    best_metric = metrics[self.early_stopping_metric]
+                elif metrics[self.early_stopping_metric] < best_metric:
+                    early_stopping_counter += 1
+                
+                    if early_stopping_counter >= self.early_stopping_patience:
+                        print(
+                            f"Early stopping triggered at epoch {epoch_idx} with "
+                            f"{self.early_stopping_metric} {metrics[self.early_stopping_metric]} < {best_metric}"
+                        )
+                        break
             self.scheduler.step()
 
 
@@ -230,8 +248,11 @@ def train(config: TrainConfig):
         for batch_idx in range(num_batches):
             batch_input = eval_input[batch_idx * batch_size: (batch_idx + 1) * batch_size].to(task.device)
             batch_dfa = eval_dfas[batch_idx * batch_size: (batch_idx + 1) * batch_size]
-            logits = model(batch_input)
-            batch_preds = torch.argmax(logits, dim=-1)
+
+            with torch.no_grad():
+                model.eval()
+                logits = model(batch_input)
+                batch_preds = torch.argmax(logits, dim=-1)
 
             for inp, pred, dfa in zip(batch_input, batch_preds, batch_dfa):
                 inp = [id2token[_t] for _t in inp]
@@ -259,7 +280,9 @@ def train(config: TrainConfig):
 
                     num_total_tokens += 1
                     num_correct_tokens += correctness
-        print(f"DFA Accuracy: {num_correct_tokens / num_total_tokens}")
+        dfa_accuracy = num_correct_tokens / num_total_tokens
+        print(f"DFA Accuracy: {dfa_accuracy}")
+        logger.log({"valid/dfa_accuracy": dfa_accuracy})
 
     logger.finish()
 
