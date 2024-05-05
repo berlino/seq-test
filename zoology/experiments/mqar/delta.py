@@ -3,22 +3,9 @@ from zoology.config import TrainConfig, ModelConfig, DataConfig, FunctionConfig,
 from zoology.data.associative_recall import MQARConfig
 
 vocab_size = 8_192
-
-seq_len = 1024
+seq_len = 512
 num_kv_pairs = 64
 d_model = 128
-
-# seq_len = 512
-# num_kv_pairs = 64
-# d_model = 128
-
-# seq_len = 256
-# num_kv_pairs = 16
-# d_model = 128
-
-# seq_len = 128
-# num_kv_pairs = 8
-# d_model = 64
 
 factory_kwargs = {
     "num_kv_pairs": num_kv_pairs,
@@ -33,7 +20,7 @@ for lr in  np.logspace(-4, -2, 4):
         data=DataConfig(
             train_configs=[MQARConfig(num_examples=100_000, vocab_size=vocab_size, input_seq_len=seq_len, **factory_kwargs)],
             test_configs=[MQARConfig(num_examples=3_000, vocab_size=vocab_size, input_seq_len=seq_len, **factory_kwargs)],
-            batch_size=256,
+            batch_size=128,
             # cache_dir="/var/cr05_data/sabri_data/zoology",
         ),
         model=ModelConfig(
@@ -43,29 +30,23 @@ for lr in  np.logspace(-4, -2, 4):
             vocab_size=vocab_size,
             max_position_embeddings=-1,
             sequence_mixer=ModuleConfig(
-                name="fla.layers.gla.GatedLinearAttention",
+                name="fla.layers.delta_net.DeltaNet",
                 kwargs={
-                            # "mode": "fused_recurrent", # by default "chunk"
-                            "num_heads": 1,
-                            "hidden_size": d_model,
-                            "expand_k": 1, # by default 0.5
-                            "use_short_conv": False,
-                            # "fuse_norm": False,
-                            # 'use_gk': True,
-                            # "use_gv": False,
-                            # "gate_logit_normalizer": 32,
-                        }              
+                        "hidden_size:": d_model,
+                        "num_heads": 2,
+                        "use_short_conv": False,
+                    }              
             ),
             state_mixer=dict(name="torch.nn.Identity", kwargs={}),
         ),
 
         learning_rate=lr,
         max_epochs=64,
-        run_id=f"mqar_seq{seq_len}_kv{num_kv_pairs}_gla_dmodel{d_model}",
+        run_id=f"mqar_seq{seq_len}_kv{num_kv_pairs}_delta_dmodel{d_model}",
         logger=LoggerConfig(
             project_name="seq-test",
             entity="bailin"
         ),
-        early_stopping_patience=64,
+        early_stopping_patience=32,
     )
     configs.append(config)

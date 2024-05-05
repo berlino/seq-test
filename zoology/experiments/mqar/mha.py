@@ -42,7 +42,9 @@ for lr in  np.logspace(-4, -2, 4):
         run_id=f"mqar_seq{seq_len}_kv{num_kv_pairs}_mha_dmodel{d_model}",
         logger=LoggerConfig(
             project_name="seq-test",
-        )
+            entity="bailin"
+        ),
+        early_stopping_patience=64,
     )
 
     configs.append(config)

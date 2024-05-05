@@ -81,6 +81,10 @@ class Trainer:
             )
             loss = main_loss + auxiliary_loss
             loss.backward()
+
+            # Bailin: add gradient clipping
+            torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
+
             self.optimizer.step()
 
             # logging and printing
@@ -227,6 +231,7 @@ def train(config: TrainConfig):
         weight_decay=config.weight_decay,
         early_stopping_metric=config.early_stopping_metric,
         early_stopping_threshold=config.early_stopping_threshold,
+        early_stopping_patience=config.early_stopping_patience,
         slice_keys=config.slice_keys,
         device="cuda" if torch.cuda.is_available() else "cpu",
         logger=logger,

@@ -5,11 +5,12 @@ from zoology.data.regbench import RegBenchConfig
 vocab_size = 18
 model_vocab_size = 18 + 2 # the additional seperator token
 seq_len = 512
-d_model = 256 # 128
+d_model = 128 # 128
 swiglu_intermediate_size = 512 # 320
 
 configs = []
-for num_epoch in [30, 60, 90, 120]:
+# for num_epoch in [30, 60, 90, 120]:
+for num_epoch in [90]:
     config = TrainConfig(
         data=DataConfig(
             train_configs=[RegBenchConfig(vocab_size=vocab_size, input_seq_len=seq_len, num_examples=10_000)],
@@ -38,7 +39,8 @@ for num_epoch in [30, 60, 90, 120]:
         logger=LoggerConfig(
             project_name="seq-test",
             entity="bailin"
-        )
+        ),
+        early_stopping_patience=32,
     )
 
     configs.append(config)
